@@ -5,7 +5,8 @@ import { vectorize } from './vectorize.js'
 import { knnSearch } from './knn.js'
 import type { FraudScoreRequest, Normalization, MccRisk } from './types.js'
 
-const DATA_PATH = process.env.REFS_BIN_PATH ?? '/app/data/refs.bin'
+const INDEX_PATH = process.env.INDEX_BIN_PATH ?? '/app/data/index.bin'
+const LABELS_PATH = process.env.LABELS_BIN_PATH ?? '/app/data/labels.bin'
 const MCC_RISK_PATH = process.env.MCC_RISK_PATH ?? '/app/resources/mcc_risk.json'
 const NORM_PATH = process.env.NORM_PATH ?? '/app/resources/normalization.json'
 const PORT = Number(process.env.PORT ?? 3000)
@@ -42,9 +43,9 @@ async function start() {
   mccRisk = JSON.parse(readFileSync(MCC_RISK_PATH, 'utf-8'))
   norm = JSON.parse(readFileSync(NORM_PATH, 'utf-8'))
 
-  console.log(`Loading dataset from ${DATA_PATH}...`)
+  console.log(`Loading HNSW index from ${INDEX_PATH} and labels from ${LABELS_PATH}...`)
   const t0 = Date.now()
-  dataset = loadDataset(DATA_PATH)
+  dataset = loadDataset(INDEX_PATH, LABELS_PATH)
   console.log(`Dataset loaded in ${Date.now() - t0} ms (${dataset.totalRecords.toLocaleString()} records)`)
 
   await app.listen({ host: '0.0.0.0', port: PORT })

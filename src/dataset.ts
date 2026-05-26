@@ -1,5 +1,8 @@
 import { openSync, fstatSync, closeSync } from 'node:fs'
 import mmapModule from '@fayzanx/mmap-io'
+import hnswlib from 'hnswlib-node'
+
+const { HierarchicalNSW } = hnswlib
 
 const mmap = mmapModule as unknown as {
   PROT_READ: number
@@ -7,32 +10,35 @@ const mmap = mmapModule as unknown as {
   map: (size: number, protection: number, flags: number, fd: number, offset?: number) => Buffer
 }
 
-const TOTAL_RECORDS = 3_000_000
 const VECTOR_SIZE = 14
-const VECTOR_BYTES_TOTAL = TOTAL_RECORDS * VECTOR_SIZE * 4
-const LABEL_BYTES_TOTAL = TOTAL_RECORDS
-const EXPECTED_SIZE = VECTOR_BYTES_TOTAL + LABEL_BYTES_TOTAL
+
+// efSearch controls the recall/speed tradeoff at query time.
+// Higher = better recall, slower. Tune later.
+const DEFAULT_EF_SEARCH = 64
 
 export interface Dataset {
-  vectors: Float32Array
+  index: InstanceType<typeof HierarchicalNSW>
   labels: Uint8Array
   totalRecords: number
   vectorSize: number
 }
 
-export function loadDataset(path: string): Dataset {
-  const fd = openSync(path, 'r')
+export function loadDataset(indexPath: string, labelsPath: string): Dataset {
+  // Load HNSW index (it lives entirely in process RAM — no mmap)
+  const index = new HierarchicalNSW('l2', VECTOR_SIZE)
+  index.readIndexSync(indexPath)
+  index.setEf(DEFAULT_EF_SEARCH)
+
+  // mmap labels (shared between containers via kernel page cache).
+  // Size is derived from the file (matches the sampled record count
+  // produced by scripts/preprocess.ts).
+  const fd = openSync(labelsPath, 'r')
   const stat = fstatSync(fd)
-  if (stat.size !== EXPECTED_SIZE) {
-    closeSync(fd)
-    throw new Error(`Unexpected refs.bin size: ${stat.size}, expected ${EXPECTED_SIZE}`)
-  }
+  const totalRecords = stat.size
 
   const buf = mmap.map(stat.size, mmap.PROT_READ, mmap.MAP_SHARED, fd)
   closeSync(fd)
+  const labels = new Uint8Array(buf.buffer, buf.byteOffset, totalRecords)
 
-  const vectors = new Float32Array(buf.buffer, buf.byteOffset, VECTOR_BYTES_TOTAL / 4)
-  const labels = new Uint8Array(buf.buffer, buf.byteOffset + VECTOR_BYTES_TOTAL, LABEL_BYTES_TOTAL)
-
-  return { vectors, labels, totalRecords: TOTAL_RECORDS, vectorSize: VECTOR_SIZE }
+  return { index, labels, totalRecords, vectorSize: VECTOR_SIZE }
 }

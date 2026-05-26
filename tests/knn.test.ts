@@ -1,56 +1,58 @@
 import { describe, it, expect } from 'vitest'
 import { knnSearch } from '../src/knn.js'
+import hnswlib from 'hnswlib-node'
 
-function makeFixture() {
-  const vectors = new Float32Array(6 * 14)
-  const labels = new Uint8Array(6)
+const { HierarchicalNSW } = hnswlib
 
-  function setRecord(i: number, baseValue: number, label: number) {
-    for (let d = 0; d < 14; d++) vectors[i * 14 + d] = baseValue
-    labels[i] = label
-  }
-
-  setRecord(0, 0.10, 0)
-  setRecord(1, 0.11, 1)
-  setRecord(2, 0.20, 0)
-  setRecord(3, 0.90, 1)
-  setRecord(4, 0.05, 0)
-  setRecord(5, 0.15, 1)
-
-  return { vectors, labels, totalRecords: 6, vectorSize: 14 }
+function makeFixture(records: { vec: number[]; label: number }[]) {
+  const idx = new HierarchicalNSW('l2', 14)
+  idx.initIndex(records.length, 16, 200, 42)
+  const labels = new Uint8Array(records.length)
+  records.forEach((r, i) => {
+    idx.addPoint(r.vec, i)
+    labels[i] = r.label
+  })
+  idx.setEf(64)
+  return { index: idx, labels }
 }
 
-describe('knnSearch', () => {
-  it('returns 0..5 (number of fraud labels among top-5 nearest)', () => {
-    const fixture = makeFixture()
+describe('knnSearch (HNSW)', () => {
+  it('returns 0..5 number of fraud labels among the K nearest', () => {
+    const fixture = makeFixture([
+      { vec: new Array(14).fill(0.10), label: 0 },
+      { vec: new Array(14).fill(0.11), label: 1 },
+      { vec: new Array(14).fill(0.20), label: 0 },
+      { vec: new Array(14).fill(0.90), label: 1 },
+      { vec: new Array(14).fill(0.05), label: 0 },
+      { vec: new Array(14).fill(0.15), label: 1 },
+    ])
     const q = new Float32Array(14).fill(0.10)
     const result = knnSearch(q, fixture)
     expect(result).toBeGreaterThanOrEqual(0)
     expect(result).toBeLessThanOrEqual(5)
   })
 
-  it('finds the closest 5 records and counts fraud labels', () => {
-    const fixture = makeFixture()
-    const q = new Float32Array(14).fill(0.10)
-    // Top-5 nearest to q=0.10: records 0(0.10), 1(0.11), 4(0.05), 5(0.15), 2(0.20)
-    // Labels: 0, 1, 0, 1, 0 → 2 fraudes
-    const result = knnSearch(q, fixture)
-    expect(result).toBe(2)
+  it('returns 5 when all neighbors are fraud', () => {
+    const fixture = makeFixture([
+      { vec: new Array(14).fill(0.5), label: 1 },
+      { vec: new Array(14).fill(0.5), label: 1 },
+      { vec: new Array(14).fill(0.5), label: 1 },
+      { vec: new Array(14).fill(0.5), label: 1 },
+      { vec: new Array(14).fill(0.5), label: 1 },
+    ])
+    const q = new Float32Array(14).fill(0.5)
+    expect(knnSearch(q, fixture)).toBe(5)
   })
 
-  it('returns 5 when all top-5 are fraud', () => {
-    const vectors = new Float32Array(5 * 14).fill(0.5)
-    const labels = new Uint8Array([1, 1, 1, 1, 1])
+  it('returns 0 when all neighbors are legit', () => {
+    const fixture = makeFixture([
+      { vec: new Array(14).fill(0.5), label: 0 },
+      { vec: new Array(14).fill(0.5), label: 0 },
+      { vec: new Array(14).fill(0.5), label: 0 },
+      { vec: new Array(14).fill(0.5), label: 0 },
+      { vec: new Array(14).fill(0.5), label: 0 },
+    ])
     const q = new Float32Array(14).fill(0.5)
-    const result = knnSearch(q, { vectors, labels, totalRecords: 5, vectorSize: 14 })
-    expect(result).toBe(5)
-  })
-
-  it('returns 0 when all top-5 are legit', () => {
-    const vectors = new Float32Array(5 * 14).fill(0.5)
-    const labels = new Uint8Array([0, 0, 0, 0, 0])
-    const q = new Float32Array(14).fill(0.5)
-    const result = knnSearch(q, { vectors, labels, totalRecords: 5, vectorSize: 14 })
-    expect(result).toBe(0)
+    expect(knnSearch(q, fixture)).toBe(0)
   })
 })

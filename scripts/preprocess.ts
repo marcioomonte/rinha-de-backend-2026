@@ -1,67 +1,83 @@
 import { createReadStream, openSync, writeSync, closeSync, mkdirSync } from 'node:fs'
 import { createGunzip } from 'node:zlib'
 import streamArray from 'stream-json/streamers/StreamArray.js'
+import hnswlib from 'hnswlib-node'
 
 const StreamArray = streamArray
+const { HierarchicalNSW } = hnswlib
 
 const TOTAL_RECORDS = 3_000_000
 const VECTOR_SIZE = 14
-const VECTOR_BYTES = VECTOR_SIZE * 4
-const LABEL_BYTES = 1
+
+// Uniform downsampling to fit the HNSW index within the 160 MB per-instance
+// RAM budget. SAMPLE_RATE=6 keeps one in every six records -> ~500K samples.
+const SAMPLE_RATE = 12
+const SAMPLED_RECORDS = Math.ceil(TOTAL_RECORDS / SAMPLE_RATE)
 
 const INPUT = 'resources/references.json.gz'
 const OUTPUT_DIR = 'data'
-const OUTPUT = `${OUTPUT_DIR}/refs.bin`
+const INDEX_OUT = `${OUTPUT_DIR}/index.bin`
+const LABELS_OUT = `${OUTPUT_DIR}/labels.bin`
+
+// HNSW build parameters
+const HNSW_M = 4
+const HNSW_EF_CONSTRUCTION = 200
 
 async function main(): Promise<void> {
   console.log(`Reading ${INPUT}`)
-  console.log(`Writing ${OUTPUT}`)
-  const totalBytes = TOTAL_RECORDS * (VECTOR_BYTES + LABEL_BYTES)
-  console.log(`Expected size: ${(totalBytes / 1024 / 1024).toFixed(1)} MB`)
+  console.log(`Writing ${INDEX_OUT} and ${LABELS_OUT}`)
+  console.log(`HNSW params: M=${HNSW_M}, efConstruction=${HNSW_EF_CONSTRUCTION}`)
 
   mkdirSync(OUTPUT_DIR, { recursive: true })
 
-  const vectorsBuf = Buffer.allocUnsafe(TOTAL_RECORDS * VECTOR_BYTES)
-  const labelsBuf = Buffer.allocUnsafe(TOTAL_RECORDS * LABEL_BYTES)
+  const labelsBuf = Buffer.allocUnsafe(SAMPLED_RECORDS)
 
-  let count = 0
+  const index = new HierarchicalNSW('l2', VECTOR_SIZE)
+  index.initIndex(SAMPLED_RECORDS, HNSW_M, HNSW_EF_CONSTRUCTION, 42)
+
+  let recordIdx = 0
+  let sampleCount = 0
+  const tStart = Date.now()
   const source = createReadStream(INPUT)
     .pipe(createGunzip())
     .pipe(StreamArray.withParser())
 
   for await (const { value } of source) {
-    if (count >= TOTAL_RECORDS) {
-      throw new Error(`More than ${TOTAL_RECORDS} records in input — aborting`)
-    }
+    if (recordIdx % SAMPLE_RATE === 0) {
+      const vec: number[] = value.vector
+      if (vec.length !== VECTOR_SIZE) {
+        throw new Error(`Record ${recordIdx} has vector length ${vec.length}, expected ${VECTOR_SIZE}`)
+      }
+      if (sampleCount >= SAMPLED_RECORDS) {
+        throw new Error(`Sampled more than ${SAMPLED_RECORDS} records — aborting`)
+      }
 
-    const vec: number[] = value.vector
-    if (vec.length !== VECTOR_SIZE) {
-      throw new Error(`Record ${count} has vector length ${vec.length}, expected ${VECTOR_SIZE}`)
-    }
+      index.addPoint(vec, sampleCount)
+      labelsBuf[sampleCount] = value.label === 'fraud' ? 1 : 0
+      sampleCount++
 
-    const vecOffset = count * VECTOR_BYTES
-    for (let d = 0; d < VECTOR_SIZE; d++) {
-      vectorsBuf.writeFloatLE(vec[d], vecOffset + d * 4)
+      if (sampleCount % 50_000 === 0) {
+        const elapsed = ((Date.now() - tStart) / 1000).toFixed(1)
+        console.log(`  ${sampleCount.toLocaleString()} / ${SAMPLED_RECORDS.toLocaleString()}  (${elapsed}s)`)
+      }
     }
-
-    labelsBuf[count] = value.label === 'fraud' ? 1 : 0
-    count++
-
-    if (count % 250_000 === 0) {
-      console.log(`  ${count.toLocaleString()} / ${TOTAL_RECORDS.toLocaleString()}`)
-    }
+    recordIdx++
   }
 
-  if (count !== TOTAL_RECORDS) {
-    throw new Error(`Expected ${TOTAL_RECORDS} records, got ${count}`)
+  if (recordIdx !== TOTAL_RECORDS) {
+    throw new Error(`Expected ${TOTAL_RECORDS} input records, got ${recordIdx}`)
   }
 
-  const fd = openSync(OUTPUT, 'w')
-  writeSync(fd, vectorsBuf)
+  console.log(`Writing HNSW index...`)
+  index.writeIndexSync(INDEX_OUT)
+
+  console.log(`Writing labels...`)
+  const fd = openSync(LABELS_OUT, 'w')
   writeSync(fd, labelsBuf)
   closeSync(fd)
 
-  console.log(`Done. Wrote ${count.toLocaleString()} records to ${OUTPUT}`)
+  const totalSec = ((Date.now() - tStart) / 1000).toFixed(1)
+  console.log(`Done in ${totalSec}s. Wrote ${sampleCount.toLocaleString()} samples (1 in every ${SAMPLE_RATE}).`)
 }
 
 main().catch((err) => {

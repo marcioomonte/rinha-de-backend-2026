@@ -4,7 +4,7 @@
 FROM --platform=linux/amd64 node:22-alpine AS builder
 WORKDIR /build
 
-# Build deps for native modules (mmap-io)
+# Build deps for native modules (mmap-io, hnswlib-node)
 RUN apk add --no-cache python3 make g++
 
 # Deps first (cache-friendly)
@@ -16,10 +16,10 @@ COPY src ./src
 COPY scripts ./scripts
 COPY resources ./resources
 
-# Compile and pre-process the dataset
+# Compile and pre-process the dataset (builds HNSW index)
 RUN npx tsc \
  && node --import tsx scripts/preprocess.ts \
- && ls -lh data/refs.bin
+ && ls -lh data/index.bin data/labels.bin
 
 # ---------- Stage 2: runtime ----------
 FROM --platform=linux/amd64 node:22-alpine AS runtime
