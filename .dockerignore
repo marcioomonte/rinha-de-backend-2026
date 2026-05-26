@@ -1,0 +1,11 @@
+node_modules
+dist
+data
+.git
+.gitignore
+docs
+participants
+test
+misc
+*.md
+.DS_Store
