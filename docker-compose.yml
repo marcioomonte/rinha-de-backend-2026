@@ -1,6 +1,6 @@
 services:
   api-1:
-    image: ghcr.io/marcioomonte/rinha-de-backend-2026:v0.1
+    image: ghcr.io/marcioomonte/rinha-de-backend-2026:v0.2
     networks: [rinha]
     deploy:
       resources:
@@ -15,7 +15,7 @@ services:
       start_period: 30s
 
   api-2:
-    image: ghcr.io/marcioomonte/rinha-de-backend-2026:v0.1
+    image: ghcr.io/marcioomonte/rinha-de-backend-2026:v0.2
     networks: [rinha]
     deploy:
       resources:
