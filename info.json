@@ -1,0 +1,7 @@
+{
+  "participants": ["Marcio Monte"],
+  "social": ["https://github.com/marcioomonte"],
+  "source-code-repo": "https://github.com/marcioomonte/rinha-de-backend-2026",
+  "stack": ["typescript", "node", "fastify", "nginx", "docker"],
+  "open_to_work": false
+}
