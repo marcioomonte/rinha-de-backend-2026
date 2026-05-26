@@ -1,6 +1,8 @@
 services:
   api-1:
     image: ghcr.io/marcioomonte/rinha-de-backend-2026:v0.3
+    environment:
+      - NPROBE=4
     networks: [rinha]
     deploy:
       resources:
@@ -16,6 +18,8 @@ services:
 
   api-2:
     image: ghcr.io/marcioomonte/rinha-de-backend-2026:v0.3
+    environment:
+      - NPROBE=4
     networks: [rinha]
     deploy:
       resources:
