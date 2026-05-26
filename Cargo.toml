@@ -1,0 +1,44 @@
+[package]
+name = "rinha-de-backend-2026"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "preprocess"
+path = "src/bin/preprocess.rs"
+
+[dependencies]
+# HTTP server + async runtime
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Date parsing (chrono is the de-facto standard)
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+
+# Memory mapping
+memmap2 = "0.9"
+
+# Gzip decompression (only used by the preprocess binary at build time)
+flate2 = "1"
+
+[profile.release]
+# Aggressive optimisations for the hot path
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.release-debug]
+inherits = "release"
+debug = true
+strip = false

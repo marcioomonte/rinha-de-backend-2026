@@ -1,6 +1,6 @@
 services:
   api-1:
-    image: rinha2026-api:dev
+    image: rinha2026-api:v0.3
     networks: [rinha]
     deploy:
       resources:
@@ -8,14 +8,14 @@ services:
           cpus: "0.425"
           memory: "160MB"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/ready"]
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/ready"]
       interval: 2s
       timeout: 1s
       retries: 30
       start_period: 30s
 
   api-2:
-    image: rinha2026-api:dev
+    image: rinha2026-api:v0.3
     networks: [rinha]
     deploy:
       resources:
@@ -23,7 +23,7 @@ services:
           cpus: "0.425"
           memory: "160MB"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/ready"]
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/ready"]
       interval: 2s
       timeout: 1s
       retries: 30

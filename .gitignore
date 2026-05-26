@@ -1,9 +1,15 @@
-node_modules/
-dist/
+# Rust
+/target/
+
+# Runtime artifacts
 data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Logs and local results
+*.log
 test/test/
 test/results.json
-*.log
-.DS_Store
-.env
-.claude
